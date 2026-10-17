@@ -133,8 +133,7 @@ private:
       msg->roi.x_offset, msg->roi.y_offset, msg->roi.width, msg->roi.height, msg->roi.do_rectify};
 
     rectifier_->set_camera_info(info);
-    RCLCPP_INFO(
-      this->get_logger(), "Rectification maps prepared (%ux%u)", info.width, info.height);
+    RCLCPP_INFO(this->get_logger(), "Rectification maps prepared (%ux%u)", info.width, info.height);
   }
 
   void on_image(const sensor_msgs::msg::Image::ConstSharedPtr msg)
@@ -152,8 +151,8 @@ private:
       encoding = common::ImageEncoding::BGR;
     } else {
       RCLCPP_ERROR_THROTTLE(
-        this->get_logger(), *this->get_clock(), 5000,
-        "Unsupported encoding: %s (only rgb8/bgr8)", msg->encoding.c_str());
+        this->get_logger(), *this->get_clock(), 5000, "Unsupported encoding: %s (only rgb8/bgr8)",
+        msg->encoding.c_str());
       return;
     }
 
