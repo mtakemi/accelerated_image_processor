@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<launch>
+  <!-- I/O topics -->
+  <arg name="input/image" default="/image_raw"/>
+  <arg name="input/camera_info" default="/camera_info"/>
+  <arg name="output/image_rect" default="/image_rect"/>
+  <!-- alpha < 0: image_proc 互換 (camera_info の P を使用), 0..1: getOptimalNewCameraMatrix -->
+  <arg name="alpha" default="-1.0"/>
+  <arg name="use_sensor_data_qos" default="false"/>
+
+  <node pkg="accelerated_image_processor_rectify" exec="accelerated_image_processor_rectify_node" output="screen">
+    <param name="alpha" value="$(var alpha)"/>
+    <param name="use_sensor_data_qos" value="$(var use_sensor_data_qos)"/>
+    <remap from="image" to="$(var input/image)"/>
+    <remap from="camera_info" to="$(var input/camera_info)"/>
+    <remap from="image_rect" to="$(var output/image_rect)"/>
+    <remap from="image_rect/camera_info" to="$(var output/image_rect)/camera_info"/>
+  </node>
+</launch>

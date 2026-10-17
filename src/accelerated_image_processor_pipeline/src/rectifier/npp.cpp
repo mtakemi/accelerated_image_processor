@@ -40,7 +40,7 @@ public:
   {
     cudaStreamCreateWithFlags(&stream_, cudaStreamNonBlocking);
     nppSetStream(stream_);
-    
+
     // NppStreamContext の初期化
     // CUDA 11.4 (L4T R35) では引数で受け取る形式のみ
     nppGetStreamContext(&npp_ctx_);
@@ -99,8 +99,8 @@ private:
 
     // ホストからデバイスメモリへコピー
     CHECK_CUDA(cudaMemcpy2DAsync(
-      src_, src_step_, src_host_, image.step, image.width * 3, image.height,
-      cudaMemcpyHostToDevice, stream_));
+      src_, src_step_, src_host_, image.step, image.width * 3, image.height, cudaMemcpyHostToDevice,
+      stream_));
 
     // NppStreamContext を使用した Remap
     CHECK_NPP(nppiRemap_8u_C3R_Ctx(
@@ -109,8 +109,7 @@ private:
 
     // デバイスからホストメモリへコピー
     CHECK_CUDA(cudaMemcpy2DAsync(
-      dst_host_, image.step, static_cast<const void *>(dst_),
-      dst_step_,
+      dst_host_, image.step, static_cast<const void *>(dst_), dst_step_,
       image.width * 3 * sizeof(Npp8u),  // in byte
       image.height, cudaMemcpyDeviceToHost, stream_));
 
