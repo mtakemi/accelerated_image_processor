@@ -35,15 +35,41 @@ common::CameraInfo compute_maps(
     distortion_coefficients.at<double>(col) = info.d[col];
   }
 
-  cv::Mat new_intrinsics = cv::getOptimalNewCameraMatrix(
-    intrinsics, distortion_coefficients, cv::Size(info.width, info.height), alpha);
+  // alpha < 0 の場合は image_proc 互換: 入力 camera_info の R と P をそのまま使う
+  const bool use_projection = alpha < 0.0;
+
+  cv::Mat new_intrinsics(3, 3, CV_64F);
+  cv::Mat rotation = cv::Mat::eye(3, 3, CV_64F);
+  if (use_projection) {
+    for (size_t row = 0; row < 3; row++) {
+      for (size_t col = 0; col < 3; col++) {
+        new_intrinsics.at<double>(row, col) = info.p[row * 4 + col];
+        rotation.at<double>(row, col) = info.r[row * 3 + col];
+      }
+    }
+  } else {
+    new_intrinsics = cv::getOptimalNewCameraMatrix(
+      intrinsics, distortion_coefficients, cv::Size(info.width, info.height), alpha);
+  }
 
   cv::Mat m1(info.height, info.width, CV_32FC1, map_x);
   cv::Mat m2(info.height, info.width, CV_32FC1, map_y);
 
   cv::initUndistortRectifyMap(
-    intrinsics, distortion_coefficients, cv::Mat::eye(3, 3, CV_64F), new_intrinsics,
+    intrinsics, distortion_coefficients, rotation, new_intrinsics,
     cv::Size(info.width, info.height), CV_32FC1, m1, m2);
+
+  if (use_projection) {
+    // P (Tx, Ty 含む) はそのまま残し、K と D のみ rectify 後の値にする
+    common::CameraInfo camera_info_rect(info);
+    camera_info_rect.d.assign(info.d.size(), 0.);
+    for (size_t row = 0; row < 3; row++) {
+      for (size_t col = 0; col < 3; col++) {
+        camera_info_rect.k[row * 3 + col] = new_intrinsics.at<double>(row, col);
+      }
+    }
+    return camera_info_rect;
+  }
 
   // Copy the original camera info and update only D and K
   common::CameraInfo camera_info_rect(info);
