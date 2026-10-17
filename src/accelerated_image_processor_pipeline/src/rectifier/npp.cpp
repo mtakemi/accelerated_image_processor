@@ -17,6 +17,7 @@
 
 #include <accelerated_image_processor_common/helper.hpp>
 
+#include <cstring>
 #include <memory>
 
 #ifdef NPP_AVAILABLE
@@ -39,9 +40,24 @@ public:
   {
     cudaStreamCreateWithFlags(&stream_, cudaStreamNonBlocking);
     nppSetStream(stream_);
+    
+    // NppStreamContext の初期化
+    npp_ctx_ = nppGetStreamContext();
+    npp_ctx_.hStream = stream_;
+    int device_id;
+    cudaGetDevice(&device_id);
+    npp_ctx_.nCudaDeviceId = device_id;
   }
   ~NppRectifier() override
   {
+    if (src_host_ != nullptr) {
+      cudaFreeHost(src_host_);
+      src_host_ = nullptr;
+    }
+    if (dst_host_ != nullptr) {
+      cudaFreeHost(dst_host_);
+      dst_host_ = nullptr;
+    }
     if (map_x_ != nullptr) {
       nppiFree(map_x_);
       map_x_ = nullptr;
@@ -72,27 +88,36 @@ private:
     result.step = image.step;
     result.encoding = image.encoding;
     result.format = image.format;
-    result.data.resize(image.data.size());
 
     NppiRect src_roi = {0, 0, static_cast<int>(image.width), static_cast<int>(image.height)};
     NppiSize src_size = {static_cast<int>(image.width), static_cast<int>(image.height)};
     NppiSize dst_roi_size = {static_cast<int>(image.width), static_cast<int>(image.height)};
 
+    // ピン留めホストメモリにデータをコピー
+    std::memcpy(src_host_, image.data.data(), image.data.size());
+
+    // ホストからデバイスメモリへコピー
     CHECK_CUDA(cudaMemcpy2DAsync(
-      src_, src_step_, image.data.data(), image.step, image.width * 3, image.height,
+      src_, src_step_, src_host_, image.step, image.width * 3, image.height,
       cudaMemcpyHostToDevice, stream_));
 
-    CHECK_NPP(nppiRemap_8u_C3R(
+    // NppStreamContext を使用した Remap
+    CHECK_NPP(nppiRemap_8u_C3R_Ctx(
       src_, src_size, src_step_, src_roi, map_x_, map_x_step_, map_y_, map_y_step_, dst_, dst_step_,
-      dst_roi_size, NPPI_INTER_LINEAR));
+      dst_roi_size, NPPI_INTER_LINEAR, npp_ctx_));
 
+    // デバイスからホストメモリへコピー
     CHECK_CUDA(cudaMemcpy2DAsync(
-      static_cast<void *>(result.data.data()), result.step, static_cast<const void *>(dst_),
+      dst_host_, image.step, static_cast<const void *>(dst_),
       dst_step_,
       image.width * 3 * sizeof(Npp8u),  // in byte
       image.height, cudaMemcpyDeviceToHost, stream_));
 
     CHECK_CUDA(cudaStreamSynchronize(stream_));
+
+    // 結果バッファを確保（ピン留めメモリから）
+    result.data.resize(image.data.size());
+    std::memcpy(result.data.data(), dst_host_, image.data.size());
 
     return result;
   }
@@ -104,6 +129,12 @@ private:
 
     src_ = nppiMalloc_8u_C3(camera_info.width, camera_info.height, &src_step_);
     dst_ = nppiMalloc_8u_C3(camera_info.width, camera_info.height, &dst_step_);
+
+    // ピン留めホストメモリの確保
+    CHECK_CUDA(cudaMallocHost(
+      reinterpret_cast<void **>(&src_host_), camera_info.width * camera_info.height * 3));
+    CHECK_CUDA(cudaMallocHost(
+      reinterpret_cast<void **>(&dst_host_), camera_info.width * camera_info.height * 3));
 
     float * map_x = new float[camera_info.width * camera_info.height];
     float * map_y = new float[camera_info.width * camera_info.height];
@@ -133,6 +164,9 @@ private:
   Npp8u * dst_{nullptr};
   int src_step_{0};
   int dst_step_{0};
+  uint8_t * src_host_{nullptr};
+  uint8_t * dst_host_{nullptr};
+  NppStreamContext npp_ctx_{};
   cudaStream_t stream_;
 };
 
