@@ -42,7 +42,8 @@ public:
     nppSetStream(stream_);
     
     // NppStreamContext の初期化
-    npp_ctx_ = nppGetStreamContext();
+    // CUDA 11.4 (L4T R35) では引数で受け取る形式のみ
+    nppGetStreamContext(&npp_ctx_);
     npp_ctx_.hStream = stream_;
     int device_id;
     cudaGetDevice(&device_id);
